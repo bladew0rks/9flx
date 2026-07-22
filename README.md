@@ -60,6 +60,15 @@ cp avatar /tmp/avatar
 cat avatar.url
 ```
 
+Read or change your presence with `me/status`:
+
+```sh
+cat me/status
+echo dnd > me/status
+```
+
+The available statuses are `online`, `dnd`, `idle`, and `invisible`.
+
 ## Does it work on Plan 9?
 
 Sure does.
