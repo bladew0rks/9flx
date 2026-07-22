@@ -19,6 +19,7 @@ const (
 	opDispatch       = 0
 	opHeartbeat      = 1
 	opIdentify       = 2
+	opPresenceUpdate = 3
 	opResume         = 6
 	opReconnect      = 7
 	opInvalidSession = 9
@@ -47,6 +48,33 @@ type Gateway struct {
 	lastActivity time.Time
 	readySince   time.Time
 	gapPending   bool
+	presence     PresenceStatus
+	presenceSink chan PresenceStatus
+}
+
+func (g *Gateway) SetPresence(status PresenceStatus) error {
+	if !status.Valid() {
+		return fmt.Errorf("invalid presence status %q", status)
+	}
+	g.mu.Lock()
+	g.presence = status
+	sink := g.presenceSink
+	if sink != nil {
+		select {
+		case sink <- status:
+		default:
+			select {
+			case <-sink:
+			default:
+			}
+			select {
+			case sink <- status:
+			default:
+			}
+		}
+	}
+	g.mu.Unlock()
+	return nil
 }
 
 func (g *Gateway) Run(ctx context.Context) error {
@@ -136,6 +164,29 @@ func (g *Gateway) connect(ctx context.Context) error {
 		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		return conn.WriteJSON(v)
 	}
+	presenceUpdates := make(chan PresenceStatus, 1)
+	go func() {
+		for {
+			select {
+			case <-closed:
+				return
+			case status := <-presenceUpdates:
+				if err := write(map[string]any{"op": opPresenceUpdate, "d": map[string]any{"status": status, "afk": false, "mobile": false, "custom_status": nil}}); err != nil {
+					stop()
+					return
+				}
+			}
+		}
+	}()
+	activatePresence := func() {
+		g.mu.Lock()
+		g.presenceSink = presenceUpdates
+		status := g.presence
+		g.mu.Unlock()
+		if status.Valid() {
+			_ = g.SetPresence(status)
+		}
+	}
 
 	var heartbeatMu sync.Mutex
 	var heartbeatStarted bool
@@ -206,6 +257,11 @@ func (g *Gateway) connect(ctx context.Context) error {
 		}()
 	}
 	defer func() {
+		g.mu.Lock()
+		if g.presenceSink == presenceUpdates {
+			g.presenceSink = nil
+		}
+		g.mu.Unlock()
 		if heartbeatStarted {
 			close(heartbeatStop)
 		}
@@ -253,10 +309,17 @@ func (g *Gateway) connect(ctx context.Context) error {
 			if resumable {
 				err = write(map[string]any{"op": opResume, "d": map[string]any{"token": g.Token, "session_id": sessionID, "seq": currentSeq}})
 			} else {
-				err = write(map[string]any{"op": opIdentify, "d": map[string]any{
+				identify := map[string]any{
 					"token": g.Token, "flags": 0,
 					"properties": map[string]string{"os": runtime.GOOS, "browser": "9flx", "device": "9flx", "locale": "en-US", "user_agent": "9flx/0.1", "browser_version": "0.1", "os_version": runtime.GOARCH, "build_version": "0.1"},
-				}})
+				}
+				g.mu.Lock()
+				presence := g.presence
+				g.mu.Unlock()
+				if presence.Valid() {
+					identify["presence"] = map[string]any{"status": presence, "afk": false, "mobile": false, "custom_status": nil}
+				}
+				err = write(map[string]any{"op": opIdentify, "d": identify})
 			}
 			if err != nil {
 				return fmt.Errorf("gateway authenticate: %w", err)
@@ -278,8 +341,10 @@ func (g *Gateway) connect(ctx context.Context) error {
 				if gap && g.OnGap != nil {
 					g.OnGap()
 				}
+				activatePresence()
 				g.state("ready", true)
 			} else if payload.T == "RESUMED" {
+				activatePresence()
 				g.state("ready", true)
 			}
 			if g.OnEvent != nil {
