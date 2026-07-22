@@ -69,6 +69,12 @@ echo dnd > me/status
 
 The available statuses are `online`, `dnd`, `idle`, and `invisible`.
 
+Set your custom status:
+
+```sh
+echo 'test' > me/custom-status
+```
+
 ## Does it work on Plan 9?
 
 Sure does.
