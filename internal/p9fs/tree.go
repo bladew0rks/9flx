@@ -22,8 +22,9 @@ func (c *valueCell) Set(value any) { c.mu.Lock(); c.value = value; c.mu.Unlock()
 func (c *valueCell) Get() any      { c.mu.RLock(); defer c.mu.RUnlock(); return c.value }
 
 type cachedConversation struct {
-	dir  *dynamicDir
-	info *valueCell
+	dir    *dynamicDir
+	info   *valueCell
+	avatar *valueCell
 }
 
 type cachedCommunity struct {
@@ -59,9 +60,15 @@ func NewTree(api *fluxer.Client, store *core.Store, hub *core.Hub, status *core.
 	t.dms = newDynamicDir(filesystem.NewStat("dms", "9flx", "9flx", 0555))
 	t.communities = newDynamicDir(filesystem.NewStat("communities", "9flx", "9flx", 0555))
 	me := newDynamicDir(filesystem.NewStat("me", "9flx", "9flx", 0555))
+	resolveMe := func() (fluxer.User, bool) {
+		profile := store.Snapshot().Me
+		return profile, profile.ID != ""
+	}
 	_ = me.Add(newSnapshotFile(filesystem.NewStat("info.json", "9flx", "9flx", 0444), func() ([]byte, error) {
 		return render.JSON(store.Snapshot().Me), nil
 	}))
+	_ = me.Add(newAvatarFile(filesystem.NewStat("avatar", "9flx", "9flx", 0444), api, resolveMe))
+	_ = me.Add(newAvatarURLFile(filesystem.NewStat("avatar.url", "9flx", "9flx", 0444), api, resolveMe))
 	for _, node := range []fs.FSNode{
 		newSnapshotFile(filesystem.NewStat("status", "9flx", "9flx", 0444), func() ([]byte, error) { return status.Text(), nil }),
 		newSnapshotFile(filesystem.NewStat("status.json", "9flx", "9flx", 0444), func() ([]byte, error) { return status.JSON(), nil }),
@@ -81,6 +88,7 @@ func NewTree(api *fluxer.Client, store *core.Store, hub *core.Hub, status *core.
 type conversationSpec struct {
 	base, id string
 	info     any
+	avatar   *fluxer.User
 	read     func() (string, bool)
 	send     func(context.Context) (string, error)
 }
@@ -96,8 +104,9 @@ func (t *Tree) Refresh() {
 			continue
 		}
 		rel, userID := relationship, relationship.User.ID
+		avatar := rel.User
 		friends = append(friends, conversationSpec{
-			base: pathName(rel.User.Tag()), id: userID, info: rel,
+			base: pathName(rel.User.Tag()), id: userID, info: rel, avatar: &avatar,
 			read: func() (string, bool) { dm, ok := t.store.FindDMForUser(userID); return dm.ID, ok },
 			send: func(ctx context.Context) (string, error) {
 				t.dmMu.Lock()
@@ -125,8 +134,13 @@ func (t *Tree) Refresh() {
 		if base == "" {
 			base = "dm"
 		}
+		var avatar *fluxer.User
+		if ch.Type == fluxer.ChannelDM && len(ch.Recipients) > 0 {
+			profile := ch.Recipients[0]
+			avatar = &profile
+		}
 		dms = append(dms, conversationSpec{
-			base: pathName(base), id: ch.ID, info: ch,
+			base: pathName(base), id: ch.ID, info: ch, avatar: avatar,
 			read: func() (string, bool) { return ch.ID, ch.ID != "" },
 			send: func(context.Context) (string, error) { return ch.ID, nil },
 		})
@@ -173,11 +187,18 @@ func (t *Tree) reconcileConversations(specs []conversationSpec, cache map[string
 		name := names[spec.id]
 		conversation := cache[spec.id]
 		if conversation == nil {
-			conversation = t.newConversation(name, spec.info, spec.read, spec.send)
+			conversation = t.newConversation(name, spec.info, spec.avatar, spec.read, spec.send)
 			cache[spec.id] = conversation
 		} else {
 			conversation.dir.SetName(name)
 			conversation.info.Set(spec.info)
+			if conversation.avatar != nil {
+				if spec.avatar == nil {
+					conversation.avatar.Set(nil)
+				} else {
+					conversation.avatar.Set(*spec.avatar)
+				}
+			}
 		}
 		children[name] = conversation.dir
 		active[spec.id] = struct{}{}
@@ -190,9 +211,10 @@ func (t *Tree) reconcileConversations(specs []conversationSpec, cache map[string
 	return children
 }
 
-func (t *Tree) newConversation(name string, info any, read func() (string, bool), send func(context.Context) (string, error)) *cachedConversation {
+func (t *Tree) newConversation(name string, info any, avatar *fluxer.User, read func() (string, bool), send func(context.Context) (string, error)) *cachedConversation {
 	dir := newDynamicDir(t.FS.NewStat(name, "9flx", "9flx", 0555))
 	cell := &valueCell{value: info}
+	var avatarCell *valueCell
 	resolveExisting := func(context.Context) (string, error) {
 		id, ok := read()
 		if !ok {
@@ -215,7 +237,16 @@ func (t *Tree) newConversation(name string, info any, read func() (string, bool)
 	} {
 		_ = dir.Add(child)
 	}
-	return &cachedConversation{dir: dir, info: cell}
+	if avatar != nil {
+		avatarCell = &valueCell{value: *avatar}
+		resolveAvatar := func() (fluxer.User, bool) {
+			profile, ok := avatarCell.Get().(fluxer.User)
+			return profile, ok && profile.ID != ""
+		}
+		_ = dir.Add(newAvatarFile(t.FS.NewStat("avatar", "9flx", "9flx", 0444), t.api, resolveAvatar))
+		_ = dir.Add(newAvatarURLFile(t.FS.NewStat("avatar.url", "9flx", "9flx", 0444), t.api, resolveAvatar))
+	}
+	return &cachedConversation{dir: dir, info: cell, avatar: avatarCell}
 }
 
 func (t *Tree) newCommunity(name string) *cachedCommunity {

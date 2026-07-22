@@ -85,6 +85,33 @@ func newHistoryFile(stat *proto.Stat, api *fluxer.Client, channel func() (string
 	})}
 }
 
+func newAvatarFile(stat *proto.Stat, api *fluxer.Client, user func() (fluxer.User, bool)) *snapshotFile {
+	return newSnapshotFile(stat, func() ([]byte, error) {
+		profile, ok := user()
+		if !ok {
+			return nil, errors.New("conversation has no user avatar")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+		data, _, err := api.Avatar(ctx, profile, 160)
+		return data, err
+	})
+}
+
+func newAvatarURLFile(stat *proto.Stat, api *fluxer.Client, user func() (fluxer.User, bool)) *snapshotFile {
+	return newSnapshotFile(stat, func() ([]byte, error) {
+		profile, ok := user()
+		if !ok {
+			return nil, errors.New("conversation has no user avatar")
+		}
+		avatarURL, err := api.AvatarURL(profile, 160)
+		if err != nil {
+			return nil, err
+		}
+		return []byte(avatarURL + "\n"), nil
+	})
+}
+
 type liveReader struct {
 	mu        sync.Mutex
 	channelID string
