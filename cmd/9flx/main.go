@@ -88,7 +88,7 @@ func run(args []string) error {
 	if err := gateway.SetCustomStatus(settings.CustomStatus); err != nil {
 		return err
 	}
-	tree, err := p9fs.NewTree(api, store, hub, status, gateway.SetPresence, cfg.HistoryLimit)
+	tree, err := p9fs.NewTree(api, store, hub, status, gateway.SetPresence, gateway.SetCustomStatus, cfg.HistoryLimit)
 	if err != nil {
 		return err
 	}

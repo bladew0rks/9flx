@@ -49,7 +49,7 @@ type Tree struct {
 	communityNodes            map[string]*cachedCommunity
 }
 
-func NewTree(api *fluxer.Client, store *core.Store, hub *core.Hub, status *core.Status, setPresence func(fluxer.PresenceStatus) error, historyLimit int) (*Tree, error) {
+func NewTree(api *fluxer.Client, store *core.Store, hub *core.Hub, status *core.Status, setPresence func(fluxer.PresenceStatus) error, setCustomStatus func(*fluxer.CustomStatus) error, historyLimit int) (*Tree, error) {
 	filesystem, root := fs.NewFS("9flx", "9flx", 0555)
 	t := &Tree{
 		FS: filesystem, api: api, store: store, hub: hub, status: status, historyLimit: historyLimit,
@@ -70,6 +70,7 @@ func NewTree(api *fluxer.Client, store *core.Store, hub *core.Hub, status *core.
 	_ = me.Add(newAvatarFile(filesystem.NewStat("avatar", "9flx", "9flx", 0444), api, resolveMe))
 	_ = me.Add(newAvatarURLFile(filesystem.NewStat("avatar.url", "9flx", "9flx", 0444), api, resolveMe))
 	_ = me.Add(newPresenceFile(filesystem.NewStat("status", "9flx", "9flx", 0666), api, setPresence))
+	_ = me.Add(newCustomStatusFile(filesystem.NewStat("custom-status", "9flx", "9flx", 0666), api, setCustomStatus))
 	for _, node := range []fs.FSNode{
 		newSnapshotFile(filesystem.NewStat("status", "9flx", "9flx", 0444), func() ([]byte, error) { return status.Text(), nil }),
 		newSnapshotFile(filesystem.NewStat("status.json", "9flx", "9flx", 0444), func() ([]byte, error) { return status.JSON(), nil }),

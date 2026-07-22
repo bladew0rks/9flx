@@ -112,30 +112,31 @@ func newAvatarURLFile(stat *proto.Stat, api *fluxer.Client, user func() (fluxer.
 	})
 }
 
-type presenceFile struct {
+type settingFile struct {
 	*fs.BaseFile
-	mu      sync.Mutex
-	reads   map[uint64][]byte
-	writes  map[uint64][]byte
-	api     *fluxer.Client
-	setLive func(fluxer.PresenceStatus) error
+	mu     sync.Mutex
+	reads  map[uint64][]byte
+	writes map[uint64][]byte
+	limit  uint64
+	load   func(context.Context) ([]byte, error)
+	store  func(context.Context, []byte) error
 }
 
-func newPresenceFile(stat *proto.Stat, api *fluxer.Client, setLive func(fluxer.PresenceStatus) error) *presenceFile {
-	return &presenceFile{BaseFile: fs.NewBaseFile(stat), reads: make(map[uint64][]byte), writes: make(map[uint64][]byte), api: api, setLive: setLive}
+func newSettingFile(stat *proto.Stat, limit uint64, load func(context.Context) ([]byte, error), store func(context.Context, []byte) error) *settingFile {
+	return &settingFile{BaseFile: fs.NewBaseFile(stat), reads: make(map[uint64][]byte), writes: make(map[uint64][]byte), limit: limit, load: load, store: store}
 }
 
-func (f *presenceFile) Open(fid uint64, mode proto.Mode) error {
+func (f *settingFile) Open(fid uint64, mode proto.Mode) error {
 	switch mode & 0x0f {
 	case proto.Oread:
 		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
 		defer cancel()
-		settings, err := f.api.Settings(ctx)
+		data, err := f.load(ctx)
 		if err != nil {
 			return err
 		}
 		f.mu.Lock()
-		f.reads[fid] = []byte(settings.Status + "\n")
+		f.reads[fid] = data
 		f.mu.Unlock()
 		return nil
 	case proto.Owrite:
@@ -144,30 +145,30 @@ func (f *presenceFile) Open(fid uint64, mode proto.Mode) error {
 		f.mu.Unlock()
 		return nil
 	default:
-		return errors.New("status must be opened for either reading or writing")
+		return errors.New("setting must be opened for either reading or writing")
 	}
 }
 
-func (f *presenceFile) Read(fid, offset, count uint64) ([]byte, error) {
+func (f *settingFile) Read(fid, offset, count uint64) ([]byte, error) {
 	f.mu.Lock()
 	data, ok := f.reads[fid]
 	f.mu.Unlock()
 	if !ok {
-		return nil, errors.New("status is not open for reading")
+		return nil, errors.New("setting is not open for reading")
 	}
 	return slice(data, offset, count), nil
 }
 
-func (f *presenceFile) Write(fid, offset uint64, data []byte) (uint32, error) {
+func (f *settingFile) Write(fid, offset uint64, data []byte) (uint32, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	buffer, ok := f.writes[fid]
 	if !ok {
-		return 0, errors.New("status is not open for writing")
+		return 0, errors.New("setting is not open for writing")
 	}
 	end := offset + uint64(len(data))
-	if end > 64 {
-		return 0, errors.New("status exceeds local buffer limit")
+	if end > f.limit {
+		return 0, errors.New("setting exceeds local buffer limit")
 	}
 	if end > uint64(len(buffer)) {
 		buffer = append(buffer, make([]byte, end-uint64(len(buffer)))...)
@@ -177,7 +178,7 @@ func (f *presenceFile) Write(fid, offset uint64, data []byte) (uint32, error) {
 	return uint32(len(data)), nil
 }
 
-func (f *presenceFile) Close(fid uint64) error {
+func (f *settingFile) Close(fid uint64) error {
 	f.mu.Lock()
 	data, writing := f.writes[fid]
 	delete(f.writes, fid)
@@ -186,20 +187,60 @@ func (f *presenceFile) Close(fid uint64) error {
 	if !writing {
 		return nil
 	}
-	text, err := commandText(data)
-	if err != nil {
-		return err
-	}
-	status := fluxer.PresenceStatus(strings.TrimSpace(text))
-	if !status.Valid() {
-		return errors.New("status must be online, dnd, idle, or invisible")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
 	defer cancel()
-	if _, err := f.api.SetStatus(ctx, status); err != nil {
-		return err
-	}
-	return f.setLive(status)
+	return f.store(ctx, data)
+}
+
+func newPresenceFile(stat *proto.Stat, api *fluxer.Client, setLive func(fluxer.PresenceStatus) error) *settingFile {
+	return newSettingFile(stat, 64, func(ctx context.Context) ([]byte, error) {
+		settings, err := api.Settings(ctx)
+		return []byte(settings.Status + "\n"), err
+	}, func(ctx context.Context, data []byte) error {
+		text, err := commandText(data)
+		if err != nil {
+			return err
+		}
+		status := fluxer.PresenceStatus(strings.TrimSpace(text))
+		if !status.Valid() {
+			return errors.New("status must be online, dnd, idle, or invisible")
+		}
+		if _, err := api.SetStatus(ctx, status); err != nil {
+			return err
+		}
+		return setLive(status)
+	})
+}
+
+func newCustomStatusFile(stat *proto.Stat, api *fluxer.Client, setLive func(*fluxer.CustomStatus) error) *settingFile {
+	return newSettingFile(stat, 512, func(ctx context.Context) ([]byte, error) {
+		settings, err := api.Settings(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if settings.CustomStatus == nil || settings.CustomStatus.Text == nil {
+			return []byte{}, nil
+		}
+		return []byte(*settings.CustomStatus.Text + "\n"), nil
+	}, func(ctx context.Context, data []byte) error {
+		text, err := commandText(data)
+		if err != nil {
+			return err
+		}
+		text = strings.TrimSpace(text)
+		var value *string
+		if text != "!reset" {
+			if utf8.RuneCountInString(text) > 128 {
+				return errors.New("custom status exceeds Fluxer's 128-character maximum")
+			}
+			value = &text
+		}
+		settings, err := api.SetCustomStatus(ctx, value)
+		if err != nil {
+			return err
+		}
+		return setLive(settings.CustomStatus)
+	})
 }
 
 type liveReader struct {
