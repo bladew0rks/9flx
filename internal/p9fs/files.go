@@ -112,6 +112,96 @@ func newAvatarURLFile(stat *proto.Stat, api *fluxer.Client, user func() (fluxer.
 	})
 }
 
+type presenceFile struct {
+	*fs.BaseFile
+	mu      sync.Mutex
+	reads   map[uint64][]byte
+	writes  map[uint64][]byte
+	api     *fluxer.Client
+	setLive func(fluxer.PresenceStatus) error
+}
+
+func newPresenceFile(stat *proto.Stat, api *fluxer.Client, setLive func(fluxer.PresenceStatus) error) *presenceFile {
+	return &presenceFile{BaseFile: fs.NewBaseFile(stat), reads: make(map[uint64][]byte), writes: make(map[uint64][]byte), api: api, setLive: setLive}
+}
+
+func (f *presenceFile) Open(fid uint64, mode proto.Mode) error {
+	switch mode & 0x0f {
+	case proto.Oread:
+		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+		settings, err := f.api.Settings(ctx)
+		if err != nil {
+			return err
+		}
+		f.mu.Lock()
+		f.reads[fid] = []byte(settings.Status + "\n")
+		f.mu.Unlock()
+		return nil
+	case proto.Owrite:
+		f.mu.Lock()
+		f.writes[fid] = []byte{}
+		f.mu.Unlock()
+		return nil
+	default:
+		return errors.New("status must be opened for either reading or writing")
+	}
+}
+
+func (f *presenceFile) Read(fid, offset, count uint64) ([]byte, error) {
+	f.mu.Lock()
+	data, ok := f.reads[fid]
+	f.mu.Unlock()
+	if !ok {
+		return nil, errors.New("status is not open for reading")
+	}
+	return slice(data, offset, count), nil
+}
+
+func (f *presenceFile) Write(fid, offset uint64, data []byte) (uint32, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	buffer, ok := f.writes[fid]
+	if !ok {
+		return 0, errors.New("status is not open for writing")
+	}
+	end := offset + uint64(len(data))
+	if end > 64 {
+		return 0, errors.New("status exceeds local buffer limit")
+	}
+	if end > uint64(len(buffer)) {
+		buffer = append(buffer, make([]byte, end-uint64(len(buffer)))...)
+	}
+	copy(buffer[offset:end], data)
+	f.writes[fid] = buffer
+	return uint32(len(data)), nil
+}
+
+func (f *presenceFile) Close(fid uint64) error {
+	f.mu.Lock()
+	data, writing := f.writes[fid]
+	delete(f.writes, fid)
+	delete(f.reads, fid)
+	f.mu.Unlock()
+	if !writing {
+		return nil
+	}
+	text, err := commandText(data)
+	if err != nil {
+		return err
+	}
+	status := fluxer.PresenceStatus(strings.TrimSpace(text))
+	if !status.Valid() {
+		return errors.New("status must be online, dnd, idle, or invisible")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+	defer cancel()
+	if _, err := f.api.SetStatus(ctx, status); err != nil {
+		return err
+	}
+	return f.setLive(status)
+}
+
 type liveReader struct {
 	mu        sync.Mutex
 	channelID string

@@ -70,11 +70,6 @@ func run(args []string) error {
 	if err := store.Bootstrap(startup, api); err != nil {
 		return err
 	}
-	tree, err := p9fs.NewTree(api, store, hub, status, cfg.HistoryLimit)
-	if err != nil {
-		return err
-	}
-
 	gateway := &fluxer.Gateway{
 		URL: discovery.Endpoints.Gateway, Token: cfg.Token,
 		OnEvent:     store.ApplyGateway,
@@ -82,6 +77,17 @@ func run(args []string) error {
 		OnError:     status.Error,
 		OnReconnect: status.Reconnected,
 		OnGap:       func() { hub.GapAll("gateway_session_gap") },
+	}
+	settings, err := api.Settings(startup)
+	if err != nil {
+		return fmt.Errorf("user settings: %w", err)
+	}
+	if err := gateway.SetPresence(settings.Status); err != nil {
+		return err
+	}
+	tree, err := p9fs.NewTree(api, store, hub, status, gateway.SetPresence, cfg.HistoryLimit)
+	if err != nil {
+		return err
 	}
 	errCh := make(chan error, 2)
 	go func() { errCh <- gateway.Run(ctx) }()
