@@ -208,6 +208,44 @@ func (c *Client) AvatarURL(user User, size int) (string, error) {
 	return fmt.Sprintf("%s/avatars/%s/%s.webp?size=%d", mediaBase, url.PathEscape(user.ID), url.PathEscape(hash), size), nil
 }
 
+func (c *Client) Avatar(ctx context.Context, user User, size int) (data []byte, contentType string, err error) {
+	defer func() {
+		if c.onRequest != nil {
+			c.onRequest(err)
+		}
+	}()
+	avatarURL, err := c.AvatarURL(user, size)
+	if err != nil {
+		return nil, "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, avatarURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("create avatar request: %w", err)
+	}
+	req.Header.Set("Accept", "image/*")
+	req.Header.Set("User-Agent", "9flx/0.1")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("fetch avatar: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+		return nil, "", fmt.Errorf("avatar fetch failed (HTTP %d)", resp.StatusCode)
+	}
+	data, err = io.ReadAll(io.LimitReader(resp.Body, 16<<20+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("read avatar: %w", err)
+	}
+	if len(data) > 16<<20 {
+		return nil, "", errors.New("avatar exceeds 16 MiB limit")
+	}
+	if len(data) == 0 {
+		return nil, "", errors.New("avatar response is empty")
+	}
+	return data, resp.Header.Get("Content-Type"), nil
+}
+
 func (c *Client) Me(ctx context.Context) (User, error) {
 	var v User
 	err := c.do(ctx, http.MethodGet, "/users/@me", nil, &v)
