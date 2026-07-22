@@ -32,6 +32,11 @@ type FatalGatewayError struct{ Err error }
 func (e *FatalGatewayError) Error() string { return e.Err.Error() }
 func (e *FatalGatewayError) Unwrap() error { return e.Err }
 
+type gatewayPresence struct {
+	Status       PresenceStatus
+	CustomStatus *CustomStatus
+}
+
 type Gateway struct {
 	URL         string
 	Token       string
@@ -49,7 +54,8 @@ type Gateway struct {
 	readySince   time.Time
 	gapPending   bool
 	presence     PresenceStatus
-	presenceSink chan PresenceStatus
+	customStatus *CustomStatus
+	presenceSink chan gatewayPresence
 }
 
 func (g *Gateway) SetPresence(status PresenceStatus) error {
@@ -58,23 +64,59 @@ func (g *Gateway) SetPresence(status PresenceStatus) error {
 	}
 	g.mu.Lock()
 	g.presence = status
-	sink := g.presenceSink
-	if sink != nil {
-		select {
-		case sink <- status:
-		default:
-			select {
-			case <-sink:
-			default:
-			}
-			select {
-			case sink <- status:
-			default:
-			}
-		}
-	}
+	g.queuePresenceLocked()
 	g.mu.Unlock()
 	return nil
+}
+
+func (g *Gateway) SetCustomStatus(status *CustomStatus) error {
+	g.mu.Lock()
+	g.customStatus = cloneCustomStatus(status)
+	g.queuePresenceLocked()
+	g.mu.Unlock()
+	return nil
+}
+
+func (g *Gateway) queuePresenceLocked() {
+	if g.presenceSink == nil || !g.presence.Valid() {
+		return
+	}
+	presence := gatewayPresence{Status: g.presence, CustomStatus: cloneCustomStatus(g.customStatus)}
+	select {
+	case g.presenceSink <- presence:
+	default:
+		select {
+		case <-g.presenceSink:
+		default:
+		}
+		select {
+		case g.presenceSink <- presence:
+		default:
+		}
+	}
+}
+
+func cloneCustomStatus(status *CustomStatus) *CustomStatus {
+	if status == nil {
+		return nil
+	}
+	cloned := *status
+	cloneString := func(value *string) *string {
+		if value == nil {
+			return nil
+		}
+		copy := *value
+		return &copy
+	}
+	cloned.Text = cloneString(status.Text)
+	cloned.ExpiresAt = cloneString(status.ExpiresAt)
+	cloned.EmojiID = cloneString(status.EmojiID)
+	cloned.EmojiName = cloneString(status.EmojiName)
+	return &cloned
+}
+
+func gatewayPresenceData(presence gatewayPresence) map[string]any {
+	return map[string]any{"status": presence.Status, "afk": false, "mobile": false, "custom_status": presence.CustomStatus}
 }
 
 func (g *Gateway) Run(ctx context.Context) error {
@@ -164,14 +206,14 @@ func (g *Gateway) connect(ctx context.Context) error {
 		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		return conn.WriteJSON(v)
 	}
-	presenceUpdates := make(chan PresenceStatus, 1)
+	presenceUpdates := make(chan gatewayPresence, 1)
 	go func() {
 		for {
 			select {
 			case <-closed:
 				return
-			case status := <-presenceUpdates:
-				if err := write(map[string]any{"op": opPresenceUpdate, "d": map[string]any{"status": status, "afk": false, "mobile": false, "custom_status": nil}}); err != nil {
+			case presence := <-presenceUpdates:
+				if err := write(map[string]any{"op": opPresenceUpdate, "d": gatewayPresenceData(presence)}); err != nil {
 					stop()
 					return
 				}
@@ -181,11 +223,8 @@ func (g *Gateway) connect(ctx context.Context) error {
 	activatePresence := func() {
 		g.mu.Lock()
 		g.presenceSink = presenceUpdates
-		status := g.presence
+		g.queuePresenceLocked()
 		g.mu.Unlock()
-		if status.Valid() {
-			_ = g.SetPresence(status)
-		}
 	}
 
 	var heartbeatMu sync.Mutex
@@ -314,10 +353,10 @@ func (g *Gateway) connect(ctx context.Context) error {
 					"properties": map[string]string{"os": runtime.GOOS, "browser": "9flx", "device": "9flx", "locale": "en-US", "user_agent": "9flx/0.1", "browser_version": "0.1", "os_version": runtime.GOARCH, "build_version": "0.1"},
 				}
 				g.mu.Lock()
-				presence := g.presence
+				presence := gatewayPresence{Status: g.presence, CustomStatus: cloneCustomStatus(g.customStatus)}
 				g.mu.Unlock()
-				if presence.Valid() {
-					identify["presence"] = map[string]any{"status": presence, "afk": false, "mobile": false, "custom_status": nil}
+				if presence.Status.Valid() {
+					identify["presence"] = gatewayPresenceData(presence)
 				}
 				err = write(map[string]any{"op": opIdentify, "d": identify})
 			}
