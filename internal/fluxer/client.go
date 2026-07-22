@@ -267,6 +267,19 @@ func (c *Client) SetStatus(ctx context.Context, status PresenceStatus) (UserSett
 	return v, err
 }
 
+func (c *Client) SetCustomStatus(ctx context.Context, text *string) (UserSettings, error) {
+	var customStatus any
+	if text != nil {
+		if strings.TrimSpace(*text) == "" {
+			return UserSettings{}, errors.New("custom status is empty")
+		}
+		customStatus = map[string]any{"text": *text, "expires_at": nil}
+	}
+	var v UserSettings
+	err := c.do(ctx, http.MethodPatch, "/users/@me/settings", map[string]any{"custom_status": customStatus}, &v)
+	return v, err
+}
+
 func (c *Client) Relationships(ctx context.Context) ([]Relationship, error) {
 	var v []Relationship
 	err := c.do(ctx, http.MethodGet, "/users/@me/relationships", nil, &v)

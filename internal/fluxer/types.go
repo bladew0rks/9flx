@@ -34,7 +34,16 @@ func (s PresenceStatus) Valid() bool {
 }
 
 type UserSettings struct {
-	Status PresenceStatus `json:"status"`
+	Status       PresenceStatus `json:"status"`
+	CustomStatus *CustomStatus  `json:"custom_status"`
+}
+
+type CustomStatus struct {
+	Text          *string `json:"text"`
+	ExpiresAt     *string `json:"expires_at"`
+	EmojiID       *string `json:"emoji_id"`
+	EmojiName     *string `json:"emoji_name"`
+	EmojiAnimated bool    `json:"emoji_animated"`
 }
 
 func (u User) Tag() string {
