@@ -252,6 +252,21 @@ func (c *Client) Me(ctx context.Context) (User, error) {
 	return v, err
 }
 
+func (c *Client) Settings(ctx context.Context) (UserSettings, error) {
+	var v UserSettings
+	err := c.do(ctx, http.MethodGet, "/users/@me/settings", nil, &v)
+	return v, err
+}
+
+func (c *Client) SetStatus(ctx context.Context, status PresenceStatus) (UserSettings, error) {
+	if !status.Valid() {
+		return UserSettings{}, fmt.Errorf("invalid presence status %q", status)
+	}
+	var v UserSettings
+	err := c.do(ctx, http.MethodPatch, "/users/@me/settings", map[string]PresenceStatus{"status": status}, &v)
+	return v, err
+}
+
 func (c *Client) Relationships(ctx context.Context) ([]Relationship, error) {
 	var v []Relationship
 	err := c.do(ctx, http.MethodGet, "/users/@me/relationships", nil, &v)

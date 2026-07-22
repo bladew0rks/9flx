@@ -15,6 +15,28 @@ type User struct {
 	System        bool    `json:"system"`
 }
 
+type PresenceStatus string
+
+const (
+	PresenceOnline    PresenceStatus = "online"
+	PresenceDND       PresenceStatus = "dnd"
+	PresenceIdle      PresenceStatus = "idle"
+	PresenceInvisible PresenceStatus = "invisible"
+)
+
+func (s PresenceStatus) Valid() bool {
+	switch s {
+	case PresenceOnline, PresenceDND, PresenceIdle, PresenceInvisible:
+		return true
+	default:
+		return false
+	}
+}
+
+type UserSettings struct {
+	Status PresenceStatus `json:"status"`
+}
+
 func (u User) Tag() string {
 	if u.Discriminator == "" {
 		return u.Username
