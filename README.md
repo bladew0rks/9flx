@@ -53,6 +53,13 @@ To send an attachment with a filename and caption:
 } > send
 ```
 
+`me`, friend directories, and one-to-one DMs also expose the user's profile picture as `avatar` and its CDN address as `avatar.url`.
+
+```sh
+cp avatar /tmp/avatar
+cat avatar.url
+```
+
 ## Does it work on Plan 9?
 
 Sure does.
