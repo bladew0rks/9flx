@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -36,6 +38,9 @@ type Client struct {
 	http        *http.Client
 	maxRateWait time.Duration
 	onRequest   func(error)
+	assetMu     sync.RWMutex
+	mediaBase   string
+	staticBase  string
 }
 
 type ClientOption func(*Client)
@@ -160,7 +165,47 @@ func decodeAPIError(resp *http.Response, data []byte) *APIError {
 func (c *Client) Discovery(ctx context.Context) (Discovery, error) {
 	var v Discovery
 	err := c.do(ctx, http.MethodGet, "/.well-known/fluxer", nil, &v)
+	if err == nil {
+		c.assetMu.Lock()
+		c.mediaBase = strings.TrimRight(v.Endpoints.Media, "/")
+		c.staticBase = strings.TrimRight(v.Endpoints.StaticCDN, "/")
+		c.assetMu.Unlock()
+	}
 	return v, err
+}
+
+func (c *Client) AvatarURL(user User, size int) (string, error) {
+	if user.ID == "" {
+		return "", errors.New("user has no ID")
+	}
+	if size == 0 {
+		size = 160
+	}
+	if size < 16 || size > 4096 {
+		return "", errors.New("avatar size must be between 16 and 4096")
+	}
+	c.assetMu.RLock()
+	mediaBase, staticBase := c.mediaBase, c.staticBase
+	c.assetMu.RUnlock()
+	if user.Avatar == nil || *user.Avatar == "" {
+		if staticBase == "" {
+			return "", errors.New("instance discovery returned no static CDN endpoint")
+		}
+		id, ok := new(big.Int).SetString(user.ID, 10)
+		if !ok {
+			return "", errors.New("user ID is not a decimal snowflake")
+		}
+		index := new(big.Int).Mod(id, big.NewInt(6)).Int64()
+		return fmt.Sprintf("%s/avatars/%d.png", staticBase, index), nil
+	}
+	if mediaBase == "" {
+		return "", errors.New("instance discovery returned no media endpoint")
+	}
+	hash := strings.TrimPrefix(*user.Avatar, "a_")
+	if hash == "" {
+		return "", errors.New("user avatar hash is empty")
+	}
+	return fmt.Sprintf("%s/avatars/%s/%s.webp?size=%d", mediaBase, url.PathEscape(user.ID), url.PathEscape(hash), size), nil
 }
 
 func (c *Client) Me(ctx context.Context) (User, error) {

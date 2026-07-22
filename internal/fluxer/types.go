@@ -89,9 +89,10 @@ func (m Message) Time() time.Time {
 type Discovery struct {
 	APICodeVersion int `json:"api_code_version"`
 	Endpoints      struct {
-		API     string `json:"api"`
-		Gateway string `json:"gateway"`
-		Media   string `json:"media"`
+		API       string `json:"api"`
+		Gateway   string `json:"gateway"`
+		Media     string `json:"media"`
+		StaticCDN string `json:"static_cdn"`
 	} `json:"endpoints"`
 	Limits json.RawMessage `json:"limits"`
 }
