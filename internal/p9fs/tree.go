@@ -3,6 +3,7 @@ package p9fs
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -49,8 +50,12 @@ type Tree struct {
 	communityNodes            map[string]*cachedCommunity
 }
 
-func NewTree(api *fluxer.Client, store *core.Store, hub *core.Hub, status *core.Status, setPresence func(fluxer.PresenceStatus) error, setCustomStatus func(*fluxer.CustomStatus) error, historyLimit int) (*Tree, error) {
-	filesystem, root := fs.NewFS("9flx", "9flx", 0555)
+func NewTree(api *fluxer.Client, store *core.Store, hub *core.Hub, status *core.Status, setPresence func(fluxer.PresenceStatus) error, setCustomStatus func(*fluxer.CustomStatus) error, historyLimit int, auth func(io.ReadWriter) (string, error)) (*Tree, error) {
+	var options []fs.Option
+	if auth != nil {
+		options = append(options, fs.WithAuth(auth))
+	}
+	filesystem, root := fs.NewFS("9flx", "9flx", 0555, options...)
 	t := &Tree{
 		FS: filesystem, api: api, store: store, hub: hub, status: status, historyLimit: historyLimit,
 		friendNodes: make(map[string]*cachedConversation), dmNodes: make(map[string]*cachedConversation),

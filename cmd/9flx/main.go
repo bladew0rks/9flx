@@ -40,7 +40,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 || args[0] != "serve" {
-		return errors.New("usage: 9flx serve [--api-base URL] [--listen ADDRESS] [--token-file PATH] [--history-limit N]")
+		return errors.New("usage: 9flx serve [--api-base URL] [--listen ADDRESS] [--token-file PATH] [--auth-user USER --auth-file PATH] [--history-limit N]")
 	}
 	cfg, err := config.Parse(args[1:])
 	if err != nil {
@@ -88,7 +88,11 @@ func run(args []string) error {
 	if err := gateway.SetCustomStatus(settings.CustomStatus); err != nil {
 		return err
 	}
-	tree, err := p9fs.NewTree(api, store, hub, status, gateway.SetPresence, gateway.SetCustomStatus, cfg.HistoryLimit)
+	var authenticate func(io.ReadWriter) (string, error)
+	if cfg.AuthUser != "" {
+		authenticate = p9fs.PasswordAuth(cfg.AuthUser, cfg.AuthPassword)
+	}
+	tree, err := p9fs.NewTree(api, store, hub, status, gateway.SetPresence, gateway.SetCustomStatus, cfg.HistoryLimit, authenticate)
 	if err != nil {
 		return err
 	}

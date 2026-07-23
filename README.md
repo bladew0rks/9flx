@@ -17,7 +17,18 @@ printf '%s' "$YOUR_FLUXER_SESSION_TOKEN" > "$HOME/.config/fluxer-token"
 ./9flx serve --token-file "$HOME/.config/fluxer-token"
 ```
 
-The 9P server has no authentication as of now, so do not expose it to an untrusted network.
+To require 9P authentication, put a separate password in another mode-0600 file:
+
+```sh
+install -m 600 /dev/null "$HOME/.config/9flx-password"
+printf '%s' "$YOUR_9P_PASSWORD" > "$HOME/.config/9flx-password"
+./9flx serve --token-file "$HOME/.config/fluxer-token" \
+    --auth-user 9flx --auth-file "$HOME/.config/9flx-password"
+```
+
+This uses the 9P authentication fid with SASL PLAIN. It prevents unauthenticated
+mounts but does not encrypt the connection; use it only over a trusted network or
+an encrypted tunnel. Keep the 9P password separate from the Fluxer session token.
 
 ## Mount
 
