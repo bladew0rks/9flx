@@ -43,8 +43,8 @@ sudo mount -t 9p -o trans=tcp,port=5640,version=9p2000,uname=9flx 127.0.0.1 /mnt
 
 Each directory under `friends`, `dms`, and `communities/*/channels` contains
 `history`, `pins`, `events`, `send`, `edit`, `reply`, `delete`, `react`,
-`unreact`, and `typing`. JSON Lines variants are available for the read-only
-message and event streams.
+`unreact`, `pin`, `unpin`, `read`, and `typing`. JSON Lines variants are
+available for the read-only message and event streams.
 
 ```sh
 cat history
@@ -52,6 +52,8 @@ echo 'hello' > send
 echo '123456789 corrected text' > edit
 echo '123456789 a reply' > reply
 echo '123456789 👍' > react
+echo '123456789' > pin
+echo '123456789' > read
 echo '123456789' > delete
 : > typing
 cat "$HOME/Downloads/cat.png" > send

@@ -243,6 +243,9 @@ func (t *Tree) newConversation(name string, info any, avatar *fluxer.User, read 
 		newDeleteFile(t.FS.NewStat("delete", "9flx", "9flx", 0222), t.api, resolveExisting),
 		newReactionFile(t.FS.NewStat("react", "9flx", "9flx", 0222), t.api, resolveExisting, true),
 		newReactionFile(t.FS.NewStat("unreact", "9flx", "9flx", 0222), t.api, resolveExisting, false),
+		newPinFile(t.FS.NewStat("pin", "9flx", "9flx", 0222), t.api, resolveExisting, true),
+		newPinFile(t.FS.NewStat("unpin", "9flx", "9flx", 0222), t.api, resolveExisting, false),
+		newAcknowledgeFile(t.FS.NewStat("read", "9flx", "9flx", 0222), t.api, resolveExisting),
 		newTypingFile(t.FS.NewStat("typing", "9flx", "9flx", 0222), t.api, resolveExisting),
 	} {
 		_ = dir.Add(child)

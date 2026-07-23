@@ -499,6 +499,34 @@ func newTypingFile(stat *proto.Stat, api *fluxer.Client, resolve func(context.Co
 	})
 }
 
+func newPinFile(stat *proto.Stat, api *fluxer.Client, resolve func(context.Context) (string, error), pinned bool) *commandFile {
+	return newCommandFile(stat, func(ctx context.Context, data []byte) error {
+		messageID, err := parseIDCommand(data)
+		if err != nil {
+			return err
+		}
+		channelID, err := resolve(ctx)
+		if err != nil {
+			return err
+		}
+		return api.SetPinned(ctx, channelID, messageID, pinned)
+	})
+}
+
+func newAcknowledgeFile(stat *proto.Stat, api *fluxer.Client, resolve func(context.Context) (string, error)) *commandFile {
+	return newCommandFile(stat, func(ctx context.Context, data []byte) error {
+		messageID, err := parseIDCommand(data)
+		if err != nil {
+			return err
+		}
+		channelID, err := resolve(ctx)
+		if err != nil {
+			return err
+		}
+		return api.AcknowledgeMessage(ctx, channelID, messageID)
+	})
+}
+
 func parseMessageCommand(data []byte) (string, string, error) {
 	text, err := commandText(data)
 	if err != nil {

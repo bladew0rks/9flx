@@ -353,6 +353,20 @@ func (c *Client) IndicateTyping(ctx context.Context, channelID string) error {
 	return c.do(ctx, http.MethodPost, "/channels/"+url.PathEscape(channelID)+"/typing", nil, nil)
 }
 
+func (c *Client) SetPinned(ctx context.Context, channelID, messageID string, pinned bool) error {
+	method := http.MethodPut
+	if !pinned {
+		method = http.MethodDelete
+	}
+	path := "/channels/" + url.PathEscape(channelID) + "/pins/" + url.PathEscape(messageID)
+	return c.do(ctx, method, path, nil, nil)
+}
+
+func (c *Client) AcknowledgeMessage(ctx context.Context, channelID, messageID string) error {
+	path := "/channels/" + url.PathEscape(channelID) + "/messages/" + url.PathEscape(messageID) + "/ack"
+	return c.do(ctx, http.MethodPost, path, map[string]any{"mention_count": 0, "manual": true}, nil)
+}
+
 func (c *Client) CreateDM(ctx context.Context, recipientID string) (Channel, error) {
 	var v Channel
 	err := c.do(ctx, http.MethodPost, "/users/@me/channels", map[string]string{"recipient_id": recipientID}, &v)
