@@ -118,6 +118,33 @@ func newAvatarFile(stat *proto.Stat, api *fluxer.Client, user func() (fluxer.Use
 	})
 }
 
+func newAvatarSettingFile(stat *proto.Stat, api *fluxer.Client, user func() (fluxer.User, bool), updated func(fluxer.User)) *settingFile {
+	return newSettingFile(stat, 16<<20, func(ctx context.Context) ([]byte, error) {
+		profile, ok := user()
+		if !ok {
+			return nil, errors.New("current user has no avatar")
+		}
+		data, _, err := api.Avatar(ctx, profile, 160)
+		return data, err
+	}, func(ctx context.Context, data []byte) error {
+		if len(data) == 0 {
+			return errors.New("avatar is empty")
+		}
+		contentType := http.DetectContentType(data)
+		switch contentType {
+		case "image/png", "image/jpeg", "image/gif", "image/webp":
+		default:
+			return fmt.Errorf("unsupported avatar image type %s", contentType)
+		}
+		profile, err := api.SetAvatar(ctx, data)
+		if err != nil {
+			return err
+		}
+		updated(profile)
+		return nil
+	})
+}
+
 func newAvatarURLFile(stat *proto.Stat, api *fluxer.Client, user func() (fluxer.User, bool)) *snapshotFile {
 	return newSnapshotFile(stat, func() ([]byte, error) {
 		profile, ok := user()

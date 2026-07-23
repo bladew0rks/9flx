@@ -3,6 +3,7 @@ package fluxer
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -249,6 +250,13 @@ func (c *Client) Avatar(ctx context.Context, user User, size int) (data []byte, 
 func (c *Client) Me(ctx context.Context) (User, error) {
 	var v User
 	err := c.do(ctx, http.MethodGet, "/users/@me", nil, &v)
+	return v, err
+}
+
+func (c *Client) SetAvatar(ctx context.Context, image []byte) (User, error) {
+	var v User
+	encoded := base64.StdEncoding.EncodeToString(image)
+	err := c.do(ctx, http.MethodPatch, "/users/@me", map[string]string{"avatar": encoded}, &v)
 	return v, err
 }
 

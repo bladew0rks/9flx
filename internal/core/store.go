@@ -132,6 +132,13 @@ func (s *Store) UpsertDM(dm fluxer.Channel) {
 	}
 }
 
+func (s *Store) SetMe(me fluxer.User) {
+	s.mu.Lock()
+	s.me = me
+	s.users[me.ID] = me
+	s.mu.Unlock()
+}
+
 func (s *Store) ApplyGateway(eventType string, sequence int64, data json.RawMessage) error {
 	now := time.Now().UTC()
 	messageEvent := func(message *fluxer.Message, id, channelID string) {

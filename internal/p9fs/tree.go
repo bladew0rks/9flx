@@ -72,7 +72,7 @@ func NewTree(api *fluxer.Client, store *core.Store, hub *core.Hub, status *core.
 	_ = me.Add(newSnapshotFile(filesystem.NewStat("info.json", "9flx", "9flx", 0444), func() ([]byte, error) {
 		return render.JSON(store.Snapshot().Me), nil
 	}))
-	_ = me.Add(newAvatarFile(filesystem.NewStat("avatar", "9flx", "9flx", 0444), api, resolveMe))
+	_ = me.Add(newAvatarSettingFile(filesystem.NewStat("avatar", "9flx", "9flx", 0666), api, resolveMe, store.SetMe))
 	_ = me.Add(newAvatarURLFile(filesystem.NewStat("avatar.url", "9flx", "9flx", 0444), api, resolveMe))
 	_ = me.Add(newPresenceFile(filesystem.NewStat("status", "9flx", "9flx", 0666), api, setPresence))
 	_ = me.Add(newCustomStatusFile(filesystem.NewStat("custom-status", "9flx", "9flx", 0666), api, setCustomStatus))

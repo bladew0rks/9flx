@@ -77,6 +77,12 @@ cp avatar /tmp/avatar
 cat avatar.url
 ```
 
+`me/avatar` is also writable and accepts PNG, JPEG, GIF, or WebP images:
+
+```sh
+cat newpfp.png > /mnt/9flx/me/avatar
+```
+
 Read or change your presence with `me/status`:
 
 ```sh
