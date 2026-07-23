@@ -59,6 +59,20 @@ echo '123456789' > delete
 cat "$HOME/Downloads/cat.png" > send
 ```
 
+Opening `history` or `pins` refreshes the conversation's attachment index
+without downloading attachment contents. Attachments are grouped by message ID
+and downloaded only when their file is read:
+
+```sh
+cat history
+ls attachments/123456789
+cat attachments/123456789/info.json
+cp attachments/123456789/video.mp4 /tmp/video.mp4
+```
+
+The index contains the latest history window plus current pins. Attachment
+downloads are streamed and are not cached by 9flx.
+
 To send an attachment with a filename and caption:
 
 ```sh

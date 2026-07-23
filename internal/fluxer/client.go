@@ -344,6 +344,50 @@ func (c *Client) Messages(ctx context.Context, channelID string, limit int) ([]M
 	return v, err
 }
 
+func (c *Client) Message(ctx context.Context, channelID, messageID string) (Message, error) {
+	var v Message
+	path := "/channels/" + url.PathEscape(channelID) + "/messages/" + url.PathEscape(messageID)
+	err := c.do(ctx, http.MethodGet, path, nil, &v)
+	return v, err
+}
+
+func (c *Client) OpenAttachment(ctx context.Context, attachmentURL string, offset int64) (body io.ReadCloser, err error) {
+	defer func() {
+		if c.onRequest != nil {
+			c.onRequest(err)
+		}
+	}()
+	u, err := url.Parse(attachmentURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, errors.New("attachment has an invalid URL")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create attachment request: %w", err)
+	}
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("User-Agent", "9flx/0.1")
+	if offset > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+	}
+	downloadClient := *c.http
+	downloadClient.Timeout = 0
+	resp, err := downloadClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch attachment: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		return nil, decodeAPIError(resp, data)
+	}
+	if offset > 0 && resp.StatusCode != http.StatusPartialContent {
+		resp.Body.Close()
+		return nil, errors.New("attachment server does not support ranged reads")
+	}
+	return resp.Body, nil
+}
+
 func (c *Client) PinnedMessages(ctx context.Context, channelID string, limit int) (ChannelPins, error) {
 	if limit < 1 {
 		limit = 1

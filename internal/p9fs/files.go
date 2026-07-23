@@ -69,7 +69,7 @@ type historyFile struct {
 	*snapshotFile
 }
 
-func newHistoryFile(stat *proto.Stat, api *fluxer.Client, channel func() (string, bool), limit int, jsonLines bool) *historyFile {
+func newHistoryFile(stat *proto.Stat, api *fluxer.Client, channel func() (string, bool), limit int, jsonLines bool, updated func([]fluxer.Message)) *historyFile {
 	return &historyFile{newSnapshotFile(stat, func() ([]byte, error) {
 		id, ok := channel()
 		if !ok {
@@ -81,11 +81,12 @@ func newHistoryFile(stat *proto.Stat, api *fluxer.Client, channel func() (string
 		if err != nil {
 			return nil, err
 		}
+		updated(messages)
 		return render.History(messages, jsonLines), nil
 	})}
 }
 
-func newPinsFile(stat *proto.Stat, api *fluxer.Client, channel func() (string, bool), jsonLines bool) *snapshotFile {
+func newPinsFile(stat *proto.Stat, api *fluxer.Client, channel func() (string, bool), jsonLines bool, updated func([]fluxer.Message)) *snapshotFile {
 	return newSnapshotFile(stat, func() ([]byte, error) {
 		id, ok := channel()
 		if !ok {
@@ -101,6 +102,7 @@ func newPinsFile(stat *proto.Stat, api *fluxer.Client, channel func() (string, b
 		for _, pin := range pins.Items {
 			messages = append(messages, pin.Message)
 		}
+		updated(messages)
 		return render.History(messages, jsonLines), nil
 	})
 }
