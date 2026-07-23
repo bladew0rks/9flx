@@ -112,6 +112,16 @@ type Attachment struct {
 	Size     int64  `json:"size"`
 }
 
+type ChannelPin struct {
+	Message  Message `json:"message"`
+	PinnedAt string  `json:"pinned_at"`
+}
+
+type ChannelPins struct {
+	Items   []ChannelPin `json:"items"`
+	HasMore bool         `json:"has_more"`
+}
+
 func (m Message) Time() time.Time {
 	t, _ := time.Parse(time.RFC3339Nano, m.Timestamp)
 	return t

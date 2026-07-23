@@ -233,6 +233,8 @@ func (t *Tree) newConversation(name string, info any, avatar *fluxer.User, read 
 		newSnapshotFile(t.FS.NewStat("info.json", "9flx", "9flx", 0444), func() ([]byte, error) { return render.JSON(cell.Get()), nil }),
 		newHistoryFile(t.FS.NewStat("history", "9flx", "9flx", 0444), t.api, read, t.historyLimit, false),
 		newHistoryFile(t.FS.NewStat("history.jsonl", "9flx", "9flx", 0444), t.api, read, t.historyLimit, true),
+		newPinsFile(t.FS.NewStat("pins", "9flx", "9flx", 0444), t.api, read, false),
+		newPinsFile(t.FS.NewStat("pins.jsonl", "9flx", "9flx", 0444), t.api, read, true),
 		newLiveFile(t.FS.NewStat("events", "9flx", "9flx", 0444), t.hub, read, false),
 		newLiveFile(t.FS.NewStat("events.jsonl", "9flx", "9flx", 0444), t.hub, read, true),
 		newSendFile(t.FS.NewStat("send", "9flx", "9flx", 0222), t.api, send),
@@ -241,6 +243,7 @@ func (t *Tree) newConversation(name string, info any, avatar *fluxer.User, read 
 		newDeleteFile(t.FS.NewStat("delete", "9flx", "9flx", 0222), t.api, resolveExisting),
 		newReactionFile(t.FS.NewStat("react", "9flx", "9flx", 0222), t.api, resolveExisting, true),
 		newReactionFile(t.FS.NewStat("unreact", "9flx", "9flx", 0222), t.api, resolveExisting, false),
+		newTypingFile(t.FS.NewStat("typing", "9flx", "9flx", 0222), t.api, resolveExisting),
 	} {
 		_ = dir.Add(child)
 	}

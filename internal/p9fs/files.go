@@ -85,6 +85,26 @@ func newHistoryFile(stat *proto.Stat, api *fluxer.Client, channel func() (string
 	})}
 }
 
+func newPinsFile(stat *proto.Stat, api *fluxer.Client, channel func() (string, bool), jsonLines bool) *snapshotFile {
+	return newSnapshotFile(stat, func() ([]byte, error) {
+		id, ok := channel()
+		if !ok {
+			return []byte{}, nil
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+		pins, err := api.PinnedMessages(ctx, id, 50)
+		if err != nil {
+			return nil, err
+		}
+		messages := make([]fluxer.Message, 0, len(pins.Items))
+		for _, pin := range pins.Items {
+			messages = append(messages, pin.Message)
+		}
+		return render.History(messages, jsonLines), nil
+	})
+}
+
 func newAvatarFile(stat *proto.Stat, api *fluxer.Client, user func() (fluxer.User, bool)) *snapshotFile {
 	return newSnapshotFile(stat, func() ([]byte, error) {
 		profile, ok := user()
@@ -466,6 +486,16 @@ func newReactionFile(stat *proto.Stat, api *fluxer.Client, resolve func(context.
 			return api.AddReaction(ctx, channelID, messageID, emoji)
 		}
 		return api.RemoveReaction(ctx, channelID, messageID, emoji)
+	})
+}
+
+func newTypingFile(stat *proto.Stat, api *fluxer.Client, resolve func(context.Context) (string, error)) *commandFile {
+	return newCommandFile(stat, func(ctx context.Context, _ []byte) error {
+		channelID, err := resolve(ctx)
+		if err != nil {
+			return err
+		}
+		return api.IndicateTyping(ctx, channelID)
 	})
 }
 

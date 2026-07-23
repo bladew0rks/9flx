@@ -336,6 +336,23 @@ func (c *Client) Messages(ctx context.Context, channelID string, limit int) ([]M
 	return v, err
 }
 
+func (c *Client) PinnedMessages(ctx context.Context, channelID string, limit int) (ChannelPins, error) {
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	var v ChannelPins
+	path := fmt.Sprintf("/channels/%s/messages/pins?limit=%d", url.PathEscape(channelID), limit)
+	err := c.do(ctx, http.MethodGet, path, nil, &v)
+	return v, err
+}
+
+func (c *Client) IndicateTyping(ctx context.Context, channelID string) error {
+	return c.do(ctx, http.MethodPost, "/channels/"+url.PathEscape(channelID)+"/typing", nil, nil)
+}
+
 func (c *Client) CreateDM(ctx context.Context, recipientID string) (Channel, error) {
 	var v Channel
 	err := c.do(ctx, http.MethodPost, "/users/@me/channels", map[string]string{"recipient_id": recipientID}, &v)
