@@ -106,10 +106,24 @@ type Message struct {
 }
 
 type Attachment struct {
-	ID       string `json:"id"`
-	Filename string `json:"filename"`
-	URL      string `json:"url"`
-	Size     int64  `json:"size"`
+	ID          string  `json:"id"`
+	Filename    string  `json:"filename"`
+	Title       *string `json:"title,omitempty"`
+	Description *string `json:"description,omitempty"`
+	ContentType *string `json:"content_type,omitempty"`
+	ContentHash *string `json:"content_hash,omitempty"`
+	Size        int64   `json:"size"`
+	URL         *string `json:"url,omitempty"`
+	ProxyURL    *string `json:"proxy_url,omitempty"`
+	Width       *int    `json:"width,omitempty"`
+	Height      *int    `json:"height,omitempty"`
+	Placeholder *string `json:"placeholder,omitempty"`
+	Flags       int     `json:"flags"`
+	NSFW        *bool   `json:"nsfw,omitempty"`
+	Duration    *int    `json:"duration,omitempty"`
+	Waveform    *string `json:"waveform,omitempty"`
+	ExpiresAt   *string `json:"expires_at,omitempty"`
+	Expired     *bool   `json:"expired,omitempty"`
 }
 
 type ChannelPin struct {

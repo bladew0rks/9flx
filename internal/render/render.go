@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bladew0rks/9flx/internal/fluxer"
 )
@@ -29,9 +31,73 @@ func History(messages []fluxer.Message, jsonLines bool) []byte {
 			out.WriteByte('\n')
 		} else {
 			fmt.Fprintf(&out, "[%s] message=%s %s: %s\n", timestamp(message.Timestamp), message.ID, author(message.Author), escapeContent(message.Content))
+			names := AttachmentNames(message.Attachments)
+			for _, attachment := range message.Attachments {
+				fmt.Fprintf(&out, "  attachment=%s path=attachments/%s/%s size=%d",
+					attachment.ID, message.ID, names[attachment.ID], attachment.Size)
+				if attachment.ContentType != nil && *attachment.ContentType != "" {
+					fmt.Fprintf(&out, " type=%s", escapeContent(*attachment.ContentType))
+				}
+				out.WriteByte('\n')
+			}
 		}
 	}
 	return out.Bytes()
+}
+
+func AttachmentNames(attachments []fluxer.Attachment) map[string]string {
+	bases := make(map[string]string, len(attachments))
+	counts := make(map[string]int, len(attachments))
+	for _, attachment := range attachments {
+		base := safePathName(attachment.Filename)
+		bases[attachment.ID] = base
+		counts[base]++
+	}
+	names := make(map[string]string, len(attachments))
+	for _, attachment := range attachments {
+		base := bases[attachment.ID]
+		if counts[base] > 1 {
+			extension := filepath.Ext(base)
+			stem := strings.TrimSuffix(base, extension)
+			base = stem + "~" + shortID(attachment.ID) + extension
+		}
+		names[attachment.ID] = base
+	}
+	return names
+}
+
+func safePathName(value string) string {
+	if value == "" {
+		return "_"
+	}
+	var out strings.Builder
+	for len(value) > 0 {
+		r, size := utf8.DecodeRuneInString(value)
+		raw := value[:size]
+		value = value[size:]
+		if r == utf8.RuneError && size == 1 || r == '/' || r == '%' || r < 0x20 || r == 0x7f {
+			for _, b := range []byte(raw) {
+				fmt.Fprintf(&out, "%%%02X", b)
+			}
+		} else {
+			out.WriteString(raw)
+		}
+	}
+	name := out.String()
+	if name == "." {
+		return "%2E"
+	}
+	if name == ".." {
+		return "%2E%2E"
+	}
+	return name
+}
+
+func shortID(id string) string {
+	if len(id) > 6 {
+		return id[len(id)-6:]
+	}
+	return id
 }
 
 func Event(event fluxer.Event, jsonLines bool) []byte {
