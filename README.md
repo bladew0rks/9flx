@@ -12,16 +12,17 @@ Go 1.24 or newer is required.
 
 ```sh
 go build -o 9flx ./cmd/9flx
-install -m 600 /dev/null "$HOME/.config/fluxer-token"
-printf '%s' "$YOUR_FLUXER_SESSION_TOKEN" > "$HOME/.config/fluxer-token"
+mkdir -p "$HOME/.config"
+echo "$YOUR_FLUXER_SESSION_TOKEN" > "$HOME/.config/fluxer-token"
+chmod 600 "$HOME/.config/fluxer-token"
 ./9flx serve --token-file "$HOME/.config/fluxer-token"
 ```
 
 To require 9P authentication, put a separate password in another mode-0600 file:
 
 ```sh
-install -m 600 /dev/null "$HOME/.config/9flx-password"
-printf '%s' "$YOUR_9P_PASSWORD" > "$HOME/.config/9flx-password"
+echo "$YOUR_9P_PASSWORD" > "$HOME/.config/9flx-password"
+chmod 600 "$HOME/.config/9flx-password"
 ./9flx serve --token-file "$HOME/.config/fluxer-token" \
     --auth-user 9flx --auth-file "$HOME/.config/9flx-password"
 ```
